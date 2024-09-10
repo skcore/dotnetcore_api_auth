@@ -1,0 +1,160 @@
+﻿1. Ensure that you have the following NuGet package installed in your ASP.NET Core project:
+
+dotnet add package Microsoft.AspNetCore.Authentication.JwtBearer
+
+2. Configure JWT Authentication in Startup.cs
+
+public class Startup
+{
+    public void ConfigureServices(IServiceCollection services)
+    {
+        // Add Authentication services with JWT bearer
+        services.AddAuthentication(options =>
+        {
+            options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+            options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+        })
+        .AddJwtBearer(options =>
+        {
+            options.TokenValidationParameters = new TokenValidationParameters
+            {
+                ValidateIssuer = true,
+                ValidateAudience = true,
+                ValidateLifetime = true,
+                ValidateIssuerSigningKey = true,
+                ValidIssuer = "https://yourapp.com", // Replace with your issuer
+                ValidAudience = "https://yourapp.com", // Replace with your audience
+                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes("YourSecretKeyHere")) // Replace with your key
+            };
+        });
+
+        services.AddControllers();
+    }
+
+    public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
+    {
+        if (env.IsDevelopment())
+        {
+            app.UseDeveloperExceptionPage();
+        }
+
+        app.UseRouting();
+
+        // Enable authentication and authorization
+        app.UseAuthentication();
+        app.UseAuthorization();
+
+        app.UseEndpoints(endpoints =>
+        {
+            endpoints.MapControllers();
+        });
+    }
+}
+
+3. Creating a Controller to Issue JWT Tokens
+
+[ApiController]
+[Route("[controller]")]
+public class AuthController : ControllerBase
+{
+    [HttpPost("login")]
+    public IActionResult Login([FromBody] UserLogin login)
+    {
+        // Hardcoded user credentials for example purposes
+        if (login.Username == "john" && login.Password == "password123")
+        {
+            // Generate JWT token
+            var token = GenerateJwtToken(login.Username);
+            return Ok(new { token });
+        }
+
+        return Unauthorized();
+    }
+
+    private string GenerateJwtToken(string username)
+    {
+        var claims = new[]
+        {
+            new Claim(JwtRegisteredClaimNames.Sub, username),
+            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+            new Claim(ClaimTypes.Name, username)
+        };
+
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes("YourSecretKeyHere"));
+        var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+        var token = new JwtSecurityToken(
+            issuer: "https://yourapp.com",
+            audience: "https://yourapp.com",
+            claims: claims,
+            expires: DateTime.Now.AddMinutes(30),
+            signingCredentials: creds);
+
+        return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+}
+
+public class UserLogin
+{
+    public string Username { get; set; }
+    public string Password { get; set; }
+}
+
+
+4. Securing API Endpoints Using JWT
+
+[ApiController]
+[Route("[controller]")]
+public class SecureController : ControllerBase
+{
+    // This endpoint is protected and requires a valid JWT token
+    [HttpGet]
+    [Authorize]
+    public IActionResult GetSecureData()
+    {
+        return Ok(new { message = "This is a secure endpoint" });
+    }
+}
+
+
+5. Testing the JWT Authentication Flow
+
+Send a POST request to the /auth/login endpoint with valid user credentials to obtain a JWT token.
+
+POST http://localhost:5000/auth/login
+Content-Type: application/json
+
+{
+  "username": "john",
+  "password": "password123"
+}
+
+ 
+Response: {
+  "token": "your-generated-jwt-token"
+}
+
+
+6. Send the JWT token in the Authorization header as a Bearer Token when accessing protected endpoints.
+
+GET http://localhost:5000/secure
+Authorization: Bearer your-generated-jwt-token
+
+{
+  "message": "This is a secure endpoint"
+}
+
+
+6. Validating Tokens
+The JwtBearer middleware validates the token automatically. It checks:
+
+The token's signature using the secret key.
+The token's issuer, audience, and expiration.
+If the token is invalid or expired, the server will return a 401 Unauthorized response.
+
+JWT Generation: After validating the username and password, a JWT token is generated with claims.
+JWT Bearer Authentication: Configured in the Startup.cs file to validate tokens on incoming requests.
+Token-Based Authorization: API endpoints are protected using the [Authorize] attribute.
+This approach provides secure, stateless authentication, ideal for modern API-based applications.
+
+
